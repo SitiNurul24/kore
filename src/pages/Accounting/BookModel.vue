@@ -471,10 +471,17 @@
 
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
-import { fetchBookModels } from '@/services/modules/bookModel'
+import {
+  deleteReportType,
+  fetchBookModelDetails,
+  fetchBookModelHeader,
+  fetchBookModels,
+  fetchReportTypes,
+  saveBookModel,
+  saveReportType,
+} from '@/services/bookModel'
 
 const DEFAULT_SRT = 'dd6304ee8704cc0cc73a9c9a4be4437d5267942cc35c11f0b429b633f9e1c848'
-const REPORT_TYPES_STORAGE_KEY = 'reportTypes'
 
 const BASE_REPORT_TYPES = [
   { code: 'DSB', description: 'Dashboard Setting' },
@@ -483,6 +490,7 @@ const BASE_REPORT_TYPES = [
 ]
 
 const reportTypes = ref([...BASE_REPORT_TYPES])
+const loadingReportTypes = ref(false)
 
 const showReportTypeManager = ref(false)
 const isAddingReportType = ref(false)
@@ -493,6 +501,8 @@ const selectedReportTypeCode = ref('')
 
 
 const calculationOptions = ['Periodic', 'Summary']
+
+const getSrt = () => localStorage.getItem('srt') || DEFAULT_SRT
 
 const createDetailRow = () => ({
   line: '',
@@ -949,6 +959,42 @@ const resetReportTypeEntry = () => {
   reportTypeFormErrors.value = {}
 }
 
+const loadReportTypes = async () => {
+  loadingReportTypes.value = true
+  try {
+    const srt = getSrt()
+    const types = await fetchReportTypes(srt)
+
+    if (Array.isArray(types) && types.length) {
+      reportTypes.value = types
+    } else {
+      reportTypes.value = [...BASE_REPORT_TYPES]
+    }
+
+    if (!selection.value.reportType && reportTypes.value.length) {
+      selection.value.reportType = reportTypes.value[0].code
+    }
+    selectedReportTypeCode.value = ''
+  } catch (error) {
+    console.error('Gagal memuat report type', error)
+    reportTypes.value = [...BASE_REPORT_TYPES]
+  } finally {
+    loadingReportTypes.value = false
+  }
+}
+
+const addReportType = async ({ code, description }) => {
+  const srt = getSrt()
+  try {
+    await saveReportType(srt, { code, description })
+    await loadReportTypes()
+    isAddingReportType.value = false
+    resetReportTypeEntry()
+  } catch (error) {
+    console.error('Gagal menambahkan report type', error)
+  }
+}
+
 const submitNewReportType = () => {
   if (!isAddingReportType.value) {
     isAddingReportType.value = true
@@ -973,85 +1019,29 @@ const submitNewReportType = () => {
     return
   }
 
-  reportTypes.value = [...reportTypes.value, { code, description }]
-  isAddingReportType.value = false
-  resetReportTypeEntry()
+  addReportType({ code, description })
 }
 
 const selectReportType = (code) => {
   selectedReportTypeCode.value = code
 }
 
-const removeSelectedReportType = () => {
+const removeSelectedReportType = async () => {
   if (!selectedReportTypeCode.value) return
 
-  const codeToRemove = selectedReportTypeCode.value
-  reportTypes.value = reportTypes.value.filter((type) => type.code !== codeToRemove)
-  bookModels.value = bookModels.value.filter((model) => model.reportType !== codeToRemove)
-
-  if (form.value.reportType === codeToRemove) {
-    form.value.reportType = ''
+  const srt = getSrt()
+  try {
+    await deleteReportType(srt, { code: selectedReportTypeCode.value })
+    await loadReportTypes()
+  } catch (error) {
+    console.error('Gagal menghapus report type', error)
   }
-
-  if (selection.value.reportType === codeToRemove) {
-    selection.value.reportType = ''
-    selection.value.modelId = ''
-  }
-
-  selectedReportTypeCode.value = ''
 }
 
 const handleSaveReportTypes = () => {
   showReportTypeManager.value = false
   isAddingReportType.value = false
   resetReportTypeEntry()
-}
-
-const saveReportTypesToStorage = () => {
-  try {
-    localStorage.setItem(REPORT_TYPES_STORAGE_KEY, JSON.stringify(reportTypes.value))
-  } catch (error) {
-    console.error('Failed to persist report types', error)
-  }
-}
-
-const mergeReportTypes = (nextTypes) => {
-  const merged = [...BASE_REPORT_TYPES]
-
-  nextTypes.forEach((item) => {
-    const code = String(item?.code || '').trim().toUpperCase()
-    const description = String(item?.description || '').trim()
-
-    if (!code || !description) return
-
-    if (!merged.some((type) => type.code === code)) {
-      merged.push({ code, description })
-    }
-  })
-
-  return merged
-}
-
-const loadReportTypesFromStorage = () => {
-  try {
-    const stored = localStorage.getItem(REPORT_TYPES_STORAGE_KEY)
-
-    if (!stored) {
-      reportTypes.value = [...BASE_REPORT_TYPES]
-      return
-    }
-
-    const parsed = JSON.parse(stored)
-    if (!Array.isArray(parsed)) {
-      reportTypes.value = [...BASE_REPORT_TYPES]
-      return
-    }
-
-    reportTypes.value = mergeReportTypes(parsed)
-  } catch (error) {
-    console.error('Failed to load report types from storage', error)
-    reportTypes.value = [...BASE_REPORT_TYPES]
-  }
 }
 
 const showForm = ref(false)
@@ -1086,13 +1076,14 @@ const syncSelectionDetails = () => {
 const loadBookModels = async () => {
   loading.value = true
   fetchError.value = ''
-  const srt = localStorage.getItem('srt') || DEFAULT_SRT
+  const srt = getSrt()
+  const currentReportType = selection.value.reportType
 
   try {
-    const models = await fetchBookModels(srt)
+    const models = await fetchBookModels(srt, currentReportType)
 
     if (Array.isArray(models) && models.length) {
-      bookModels.value = models
+      bookModels.value = models.map((item) => ({ ...item, reportType: currentReportType }))
       return
     }
 
@@ -1111,21 +1102,19 @@ const loadBookModels = async () => {
 }
 
 onMounted(() => {
-  loadReportTypesFromStorage()
-  loadBookModels()
+  loadReportTypes().then(() => {
+    if (selection.value.reportType) {
+      loadBookModels()
+    }
+  })
 })
-
-watch(
-  () => reportTypes.value,
-  () => {
-    saveReportTypesToStorage()
-  },
-  { deep: true }
-)
 
 watch(
   () => selection.value.reportType,
   () => {
+    if (selection.value.reportType) {
+      loadBookModels()
+    }
 
     const stillExists = availableModels.value.some(
       (item) => String(item.id) === selection.value.modelId
@@ -1161,13 +1150,14 @@ const resetFormState = () => {
 
 const handleNew = () => {
   resetFormState()
+  form.value.reportType = selection.value.reportType || ''
   isEditing.value = false
   showForm.value = true
 }
 
-const handleOpen = () => {
+const handleOpen = async () => {
   if (selectedModel.value) {
-    selectModel(selectedModel.value)
+    await selectModel(selectedModel.value)
   }
 }
 
@@ -1176,15 +1166,29 @@ const toggleCopyFrom = () => {
   copyFromOpen.value = !copyFromOpen.value
 }
 
-const selectModel = (model) => {
+const selectModel = async (model) => {
+  const srt = getSrt()
+  let header = model
+  let details = model.details || []
+
+  try {
+    const remoteHeader = await fetchBookModelHeader(srt, model.bookModel)
+    if (remoteHeader) {
+      header = { ...header, ...remoteHeader }
+    }
+
+    const remoteDetails = await fetchBookModelDetails(srt, model.bookModel)
+    if (Array.isArray(remoteDetails) && remoteDetails.length) {
+      details = remoteDetails
+    }
+  } catch (error) {
+    console.error('Gagal memuat detail book model', error)
+  }
+
   form.value = {
-    id: model.id,
-    bookModel: model.bookModel,
-    description: model.description || '',
-    chartOfAccount: model.chartOfAccount || '',
-    reportType: model.reportType || '',
-    calculation: model.calculation || 'Periodic',
-    details: (model.details || []).map((detail) => ({ ...detail })),
+    ...createEmptyForm(),
+    ...header,
+    details: details.length ? details.map((detail) => ({ ...detail })) : [createDetailRow()],
   }
   errors.value = {}
   isEditing.value = true
@@ -1234,7 +1238,7 @@ const validateForm = () => {
   return Object.keys(nextErrors).length === 0
 }
 
-const handleSave = () => {
+const handleSave = async () => {
   if (!validateForm()) {
     return
   }
@@ -1244,19 +1248,16 @@ const handleSave = () => {
     details: form.value.details.map((detail) => ({ ...detail })),
   }
 
-  if (payload.id) {
-    bookModels.value = bookModels.value.map((item) =>
-      item.id === payload.id ? { ...payload } : item
-    )
-  } else {
-    const newId = Math.max(0, ...bookModels.value.map((item) => item.id)) + 1
-    bookModels.value = [
-      ...bookModels.value,
-      { ...payload, id: newId },
-    ]
-  }
+  const srt = getSrt()
+  const action = isEditing.value ? 'update' : 'insert'
 
-  handleBack()
+  try {
+    await saveBookModel(srt, payload, action)
+    await loadBookModels()
+    handleBack()
+  } catch (error) {
+    fetchError.value = error?.message || 'Gagal menyimpan book model.'
+  }
 }
 
 const handleBack = () => {
