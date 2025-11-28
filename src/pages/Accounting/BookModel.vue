@@ -481,7 +481,7 @@ import {
   saveReportType,
 } from '@/services/bookModel'
 
-const DEFAULT_SRT = 'dd6304ee8704cc0cc73a9c9a4be4437d5267942cc35c11f0b429b633f9e1c848'
+const DEFAULT_SRT = '503aea5523f0cb8c526a019a352e15644e648e8ecb4a11f08144b633f9e1c848'
 
 const BASE_REPORT_TYPES = [
   { code: 'DSB', description: 'Dashboard Setting' },

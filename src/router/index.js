@@ -2,12 +2,12 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import Login from '@/pages/Auth/Login.vue'
 
-import adminRouter from './adminRouter'  
+import adminRoutes from './adminRouter'
 
 const routes = [
   { path: '/', redirect: '/login' }, // Redirect root to login
   { path: '/login', component: Login },
-   ...adminRouter.options.routes,
+  ...adminRoutes,
 
 ]
 
