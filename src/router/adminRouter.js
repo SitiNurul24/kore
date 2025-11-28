@@ -1,4 +1,3 @@
-import { createRouter, createWebHistory } from 'vue-router'
 import Accounting from '@/pages/Accounting.vue'
 import Dashboard from '@/pages/Dashboard.vue'
 import Membership from '../pages/Membership/pinjaman/index.vue'
@@ -50,10 +49,4 @@ const adminRoutes = [
     meta: { requiresAuth: true },
   },
 ]
-
-const adminRouter = createRouter({
-  history: createWebHistory(),
-  routes: adminRoutes,
-})
-
-export default adminRouter
+export default adminRoutes
